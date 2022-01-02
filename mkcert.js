@@ -7,10 +7,8 @@ const mkKeyPair = require('./keypair');
 
 const CA_ROOT_CRT = 'rootCA.pem.crt';
 const CA_ROOT_KEY = 'rootCA.pem.key';
-const CERT_CIPHER_KEY_LENGTH = 2048;
-const CERT_EXPIRY_YEARS = 1;
-const CERT_ORGANIZATION_NAME = 'My Organization Ltd';
-const CERT_ORGANIZATION_UNIT_NAME = 'Engineering';
+const CERT_ORGANIZATION_NAME = 'js-mk-cert development certificate';
+const CERT_ORGANIZATION_UNIT_NAME = 'averagehuman';
 
 
 let params = process.argv.slice(2);
@@ -25,7 +23,7 @@ const CERT_SUBJECT_ALT_NAME =
 const CERT_SUBJECT_ATTRS = [
     {
         name: 'commonName',
-        value: `${CERT_COMMON_NAME} (Self-Signed)`
+        value: CERT_COMMON_NAME
     },
     {
         name: 'organizationName',
@@ -43,6 +41,7 @@ const CERT_EXT_ATTRS = [
         altNames: [CERT_SUBJECT_ALT_NAME]
     }
 ];
+
 
 const PRIV_KEY_OUTPUT_FILE = path.resolve(__dirname, CERT_COMMON_NAME + '.key');
 const CERT_OUTPUT_FILE = path.resolve(__dirname, CERT_COMMON_NAME + '.crt');
@@ -73,9 +72,6 @@ function main() {
         keypair = mkKeyPair(
             caCert,
             caKey,
-            CERT_COMMON_NAME,
-            CERT_EXPIRY_YEARS,
-            CERT_CIPHER_KEY_LENGTH,
             CERT_SUBJECT_ATTRS,
             CERT_EXT_ATTRS
         );

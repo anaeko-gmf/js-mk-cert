@@ -3,30 +3,51 @@ const crypto = require('crypto');
 const forge = require('node-forge');
 const pki = forge.pki;
 
-function mkSerialNumber(commonName) {
+const DEFAULT_EXPIRY_YEARS = 1;
+const DEFAULT_KEY_LENGTH = 2048;
+
+/**
+ * Returns a random unique hexidecimal string
+ *
+ * @param {string=} text - optional namespace
+ */
+function mkSerialNumber(namespace) {
     const rnd = '.' + new Date() + '.' + Math.floor(Math.random() * 100000);
-    const hash = crypto.createHash('sha1').update(commonName + rnd, 'binary');
-    // Prepend '00' to prevent negative serial number, cf. https://github.com/digitalbazaar/forge/issues/349
+    const hash = crypto.createHash('sha1').update(namespace + rnd, 'binary');
+    // Prepend '00' to prevent negative serial number (https://github.com/digitalbazaar/forge/issues/349)
     return '00' + hash.digest('hex');
 }
 
-function mkKeyPair(caCertPem, caKeyPem, commonName, expiresAfter, keyLength, subject, ext) {
+/**
+ * Generate a PKI X.509 certificate and private key signed by the given Certificate Authority key
+ *
+ * @param {string} caCertPem
+ * @param {string} caKeyPem
+ * @param {Object[]} subject
+ * @param {Object[]} extensions
+ * @param {Object=} options
+ */
+function mkKeyPair(caCertPem, caKeyPem, subject, extensions, options) {
+
+    const opts = {...(options || {})};
+    opts.keyLength = opts.keyLength || DEFAULT_KEY_LENGTH;
+    opts.expiryYears = opts.expiryYears || DEFAULT_EXPIRY_YEARS;
+    opts.serialNumber = opts.serialNumber || mkSerialNumber(JSON.stringify(subject));
+
     const caCert = pki.certificateFromPem(caCertPem);
     const caKey = pki.privateKeyFromPem(caKeyPem);
-
-    const keys = pki.rsa.generateKeyPair(keyLength);
+    const keys = pki.rsa.generateKeyPair(opts.keyLength);
     const cert = pki.createCertificate();
     const currentYear = new Date().getFullYear();
 
     cert.publicKey = keys.publicKey;
-    cert.serialNumber = mkSerialNumber(commonName);
-    console.debug(cert.serialNumber);
+    cert.serialNumber = opts.serialNumber;
     cert.validity.notBefore = new Date();
     cert.validity.notAfter = new Date();
-    cert.validity.notAfter.setFullYear(currentYear + expiresAfter);
+    cert.validity.notAfter.setFullYear(currentYear + opts.expiryYears);
     cert.setSubject(subject);
     cert.setIssuer(caCert.subject.attributes);
-    cert.setExtensions(ext);
+    cert.setExtensions(extensions);
     cert.sign(caKey, forge.md.sha256.create());
 
     return {
