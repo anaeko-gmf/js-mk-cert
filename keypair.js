@@ -35,10 +35,28 @@ function mkKeyPair(caCertPem, caKeyPem, subject, extensions, options) {
     opts.serialNumber = opts.serialNumber || mkSerialNumber(JSON.stringify(subject));
 
     const caCert = pki.certificateFromPem(caCertPem);
+    console.debug(caCert);
     const caKey = pki.privateKeyFromPem(caKeyPem);
     const keys = pki.rsa.generateKeyPair(opts.keyLength);
     const cert = pki.createCertificate();
     const currentYear = new Date().getFullYear();
+    extensions = extensions || [];
+    hasAuthorityKeyId = extensions.some((elem) => elem.name === 'authorityKeyIdentifier');
+    if (!hasAuthorityKeyId) {
+        const subjectKeyIdentifier = caCert.getExtension('subjectKeyIdentifier');
+        if (!!subjectKeyIdentifier) {
+            // normalise key - uppercase, split and join with ':'
+            const hex = subjectKeyIdentifier.subjectKeyIdentifier.toUpperCase();
+            const parts = ['keyid'];
+            for (let i=0; i<hex.length; i=i+2) {
+                parts.push(hex.substr(i, 2));
+            }
+            extensions.push({
+                name: 'authorityKeyIdentifier',
+                value: parts.join(':')
+            });
+        }
+    }
 
     cert.publicKey = keys.publicKey;
     cert.serialNumber = opts.serialNumber;
@@ -48,6 +66,7 @@ function mkKeyPair(caCertPem, caKeyPem, subject, extensions, options) {
     cert.setSubject(subject);
     cert.setIssuer(caCert.subject.attributes);
     cert.setExtensions(extensions);
+
     cert.sign(caKey, forge.md.sha256.create());
 
     return {

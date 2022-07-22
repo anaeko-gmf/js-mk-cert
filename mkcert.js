@@ -7,46 +7,93 @@ const mkKeyPair = require('./keypair');
 
 const CA_ROOT_CRT = 'rootCA.pem.crt';
 const CA_ROOT_KEY = 'rootCA.pem.key';
-const CERT_ORGANIZATION_NAME = 'js-mk-cert development certificate';
-const CERT_ORGANIZATION_UNIT_NAME = 'averagehuman';
 
 
 let params = process.argv.slice(2);
 if (!params || params.length === 0) {
-    console.error('A common name is required as input, eg. an IP address or domain name');
+    console.error('A common name is required as input, eg. an IP address, dns name, email address');
     process.exit(1);
 }
-const CERT_COMMON_NAME = params[0];
-const CERT_SUBJECT_ALT_NAME =
-    net.isIP(CERT_COMMON_NAME) ? { type: 7, ip: CERT_COMMON_NAME} : { type: 2, value: CERT_COMMON_NAME };
+let certCommonName = params[0];
+const certOrganizationName = params[1];
+const certOrganizationUnitName = params[2];
 
-const CERT_SUBJECT_ATTRS = [
+const certExtAttrs = [
+    {
+        name: 'basicConstraints',
+        cA: false,
+        critical: true
+    },
+    {
+        name: 'keyUsage',
+        value: 'Digital Signature, Key Encipherment',
+        critical: true
+    }
+];
+let certSubjectAttrs;
+let certSubjectAltName;
+let extKeyUsage;
+
+
+if (certCommonName.startsWith('client:')) {
+    certCommonName = certCommonName.substr('client:'.length);
+    if (certCommonName.indexOf('@') > -1) {
+        // rfc822Name
+        console.debug('rfc822Name');
+        certSubjectAltName = {type: 1, value: certCommonName};
+    }
+    extKeyUsage = 'TLS Web Client Authentication';
+} else {
+    // derive SAN from CN (eg. ip address or server name)
+    // cf. https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.6
+    if (net.isIP(certCommonName)) {
+        // iPAddress
+        certSubjectAltName = { type: 7, ip: certCommonName};
+    } else {
+        // dNSName
+        certSubjectAltName = { type: 2, value: certCommonName };
+    }
+    extKeyUsage = 'TLS Web Server Authentication';
+}
+
+certExtAttrs.push({
+    name: 'extKeyUsage',
+    value: extKeyUsage
+});
+
+if (!!certSubjectAltName) {
+    certExtAttrs.push({
+        name: 'subjectAltName',
+        altNames: [certSubjectAltName]
+    });
+}
+
+certSubjectAttrs = [
     {
         name: 'commonName',
-        value: CERT_COMMON_NAME
-    },
-    {
+        value: certCommonName
+    }
+];
+
+if (!!certOrganizationName) {
+    certSubjectAttrs.push({
         name: 'organizationName',
-        value: CERT_ORGANIZATION_NAME
-    },
-    {
-        name: 'organizationalUnitName',
-        value: CERT_ORGANIZATION_UNIT_NAME
-    }
-];
+        value: certOrganizationName
+    });
+}
 
-const CERT_EXT_ATTRS = [
-    {
-        name: 'subjectAltName',
-        altNames: [CERT_SUBJECT_ALT_NAME]
-    }
-];
+if (!!certOrganizationUnitName) {
+    certSubjectAttrs.push({
+        name: 'organizationUnitName',
+        value: certOrganizationUnitName
+    });
+}
 
 
-const PRIV_KEY_OUTPUT_FILE = path.resolve(__dirname, CERT_COMMON_NAME + '.key');
-const CERT_OUTPUT_FILE = path.resolve(__dirname, CERT_COMMON_NAME + '.crt');
+const privKeyOutputFile = path.resolve(__dirname, certCommonName + '.key');
+const certOutputFile = path.resolve(__dirname, certCommonName + '.crt');
 
-[PRIV_KEY_OUTPUT_FILE, CERT_OUTPUT_FILE].forEach( filename => {
+[privKeyOutputFile, certOutputFile].forEach( filename => {
     if (fs.existsSync(filename)) {
         console.error(`Output file exists: ${filename}`);
         process.exit(1);
@@ -66,14 +113,14 @@ function main() {
         process.exit(1);
     }
 
-    console.log(`Creating self-signed certificate (CN=${CERT_COMMON_NAME})...`);
+    console.log(`Creating self-signed certificate (CN=${certCommonName})...`);
 
     try {
         keypair = mkKeyPair(
             caCert,
             caKey,
-            CERT_SUBJECT_ATTRS,
-            CERT_EXT_ATTRS
+            certSubjectAttrs,
+            certExtAttrs
         );
     } catch (err) {
         console.error(err);
@@ -81,11 +128,11 @@ function main() {
     }
 
 
-    fs.writeFileSync(PRIV_KEY_OUTPUT_FILE, keypair.privateKeyPem);
-    console.log(`Wrote file: ${PRIV_KEY_OUTPUT_FILE}`);
+    fs.writeFileSync(privKeyOutputFile, keypair.privateKeyPem);
+    console.log(`Wrote file: ${privKeyOutputFile}`);
 
-    fs.writeFileSync(CERT_OUTPUT_FILE, keypair.certPem);
-    console.log(`Wrote file: ${CERT_OUTPUT_FILE}`);
+    fs.writeFileSync(certOutputFile, keypair.certPem);
+    console.log(`Wrote file: ${certOutputFile}`);
 }
 
 main();
